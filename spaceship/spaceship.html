@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="utf-8" />
+<title>Space Ship</title>
+
+<style>
+* {
+	padding: 0;
+	margin: 0;
+}
+
+body {
+	overflow: hidden;
+	background: #e4e6e8;
+}
+
+#canvas {
+	display: block;
+	margin: 40px auto 0px;
+	background: #fff;
+	box-shadow: 2px 2px 8px 0px rgba(0,0,0,0.1);
+}
+</style>
+
+</head>
+
+<body>
+
+<canvas id="canvas" width="640" height="480"></canvas>
+
+<script src="../lib/quintus-all.js"></script>
+
+<script>
+"use strict";
+
+window.onload = function() {
+	var Q = Quintus()
+			.include("Sprites, Input, Scenes")
+			.setup('canvas')
+			.controls();
+
+	Q.el.style.backgroundColor = 'black';
+
+    // modified code from the book 'Professional HTML5 Mobile Game Development'
+	Q.Sprite.extend('Starfield', {
+		init: function(p) {
+			this._super(p, {
+				w: Q.width,
+				h: Q.height,
+				speed: 20,
+				transparancy: 1,
+				numStars: 100,
+				clear: false,
+				stars: null,
+				offset: 0
+			});
+
+			// setup the offscreen canvas
+		    this.p.stars = document.createElement('canvas');
+		    this.p.stars.width = Q.width;
+		    this.p.stars.height = Q.height;
+
+		    var starCtx = this.p.stars.getContext('2d');
+		    this.p.offset = 0;
+
+		    // If the clear option is set, make the background black
+		    // instead of transparent
+		    if (this.p.clear) {
+		        starCtx.fillStyle = '#000';
+		        starCtx.fillRect(0, 0, this.p.stars.width, this.p.stars.height);
+		    }
+
+		    // Now draw a bunch of random 2 pixel rectangles onto the
+		    // offscren canvas
+		    starCtx.fillStyle = '#fff';
+		    starCtx.globalAlpha = this.p.transparancy;
+
+		    for (var i = 0; i < this.p.numStars; i++) {
+		        starCtx.fillRect(Math.floor(Math.random() * this.p.stars.width),
+		            Math.floor(Math.random() * this.p.stars.height), 2, 2);
+		    }
+		},
+		draw: function(ctx) {
+			// console.log('starfield: draw...');
+	        var intOffset = Math.floor(this.p.offset);
+	        var remaining = this.p.stars.height - intOffset;
+
+	        // Draw the tophalf of the starfield
+	        if (intOffset > 0) {
+	            ctx.drawImage(this.p.stars,
+	                0, remaining,
+	                this.p.stars.width, intOffset,
+	                0, 0,
+	                this.p.stars.width, intOffset);
+	        }
+
+	        // Draw the bottom half of the starfield
+	        if (remaining > 0) {
+	            ctx.drawImage(this.p.stars,
+	                0, 0,
+	                this.p.stars.width, remaining,
+	                0, intOffset,
+	                this.p.stars.width, remaining);
+	        }
+		},
+		step: function(dt) {
+        	this.p.offset += this.p.speed * dt;
+        	this.p.offset %= this.p.stars.height;
+		}
+	});
+
+    // The Ship class extend Sprite class
+	Q.Sprite.extend("Ship", {
+		init: function(p) {
+			this._super(p, {
+				asset: 'ship.png',
+				x: Q.width/2,
+				y: Q.height/2,
+				scale: 0.5,         // scale ship.png to half size
+				vx: 0,              // horizontal velocity
+				vy: 0,              // vertical velocity
+				thrust: 500,        // thrust applied when 'up' key is pressed
+				aSpeed: 300,        // angular speed applied when 'left/right' key is pressed
+				laserSpeed: 350,    // laser speed
+				drag: 0.98,         // drag/friction applied to ship motion
+				reload: 0           // laser reload delay
+			});
+		},
+		fire: function() {
+		    if(this.p.reload <= 0) {
+                // find the directional components of the velocity
+				var vx = Math.cos(this.p.angle * Math.PI / 180);
+				var vy = Math.sin(this.p.angle * Math.PI / 180);
+
+                // laser will originate from ship center
+		    	var x = this.p.x;
+		    	var y = this.p.y;
+
+                // move the laser to originate from ship nose
+		        x += vx * this.p.w/4;
+		        y += vy * this.p.w/4;
+
+                // calculate laser velocity
+		        vx *= this.p.laserSpeed;
+		        vy *= this.p.laserSpeed;
+
+                // add ship velocity to laser velocity
+		        vx += this.p.vx;
+		        vy += this.p.vy;
+
+		        this.stage.insert(new Q.Laser(
+                            { x: x, y: y,
+                              vx: vx, vy: vy,
+                              angle: this.p.angle }));
+                // reset reload
+		        this.p.reload = 1000 / 50;
+		    }
+		},
+		step: function(dt) {
+			if(Q.inputs["up"]) {
+				this.p.vx += this.p.thrust * Math.cos(this.p.angle * Math.PI / 180) * dt;
+				this.p.vy += this.p.thrust * Math.sin(this.p.angle * Math.PI / 180) * dt;
+			}
+			else {
+				this.p.vx *= this.p.drag;
+				this.p.vy *= this.p.drag;
+			}
+
+			if(Q.inputs['left']) {
+				this.p.angle -= this.p.aSpeed * dt;
+			}
+			else if(Q.inputs['right']) {
+				this.p.angle += this.p.aSpeed * dt;
+			}
+
+            if(Q.inputs['fire']) {
+                this.fire();
+            }
+
+			this.p.x += this.p.vx * dt;
+			this.p.y += this.p.vy * dt;
+
+			if(this.p.x > Q.width || this.p.x < 0) {
+				this.p.x = (this.p.x + Q.width) % Q.width;
+			}
+
+			if(this.p.y > Q.height || this.p.y < 0) {
+			    this.p.y = (this.p.y + Q.height) % Q.height;
+			}
+
+			if(this.p.angle > 360) { this.p.angle -= 360; }
+			if(this.p.angle < 0) { this.p.angle += 360; }
+
+            this.p.reload--;
+		}
+	});
+
+	Q.Sprite.extend('Laser', {
+		init: function(p) {
+			this._super(p, {
+				asset: 'laserblue.png',
+				vx: 0,
+				vy: 0
+			});
+		},
+		step: function(dt) {
+			this.p.x += this.p.vx * dt;
+			this.p.y += this.p.vy * dt;
+
+            // out of site out of mind
+			if(this.p.x > Q.width || this.p.x < 0 ||
+				this.p.y > Q.height || this.p.y < 0) {
+				this.destroy();
+			}
+		}
+	});
+
+	Q.scene("main", function(stage) {
+	    // Q.gravity = 0;
+	    stage.insert(new Q.Starfield({transparancy: 0.4, clear: true}));
+	    stage.insert(new Q.Starfield({speed: 50, transparancy: 0.6}));
+	    stage.insert(new Q.Starfield({speed: 100, numStars: 50}));
+	    stage.insert(new Q.Ship());
+	});
+
+	Q.load("ship.png, laserblue.png", function() {
+		Q.stageScene('main');
+	});
+};
+
+</script>
+</body>
+</html>
